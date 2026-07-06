@@ -1,4 +1,4 @@
-const clientService = require("../services/client.services.js");
+const clientService = require("../services/client.service.js");
 
 async function createClient(req, res) {
 	try {
@@ -43,7 +43,20 @@ async function addReceiver(req, res) {
 }
 
 async function getClientSummary(req, res) {
-	//to be done
+	try {
+		const clientId = Number(req.params.id);
+		const summary = await clientService.getClientSummary(clientId);
+
+		return res.status(200).json({
+			success: true,
+			data: summary,
+		});
+	} catch (error) {
+		return res.status(error.statusCode || 500).json({
+			success: false,
+			message: error.message || "Failed to fetch client summary",
+		});
+	}
 }
 
 module.exports = {

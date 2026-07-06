@@ -1,10 +1,12 @@
 const express = require('express');
 require('dotenv/config');
 const pool = require('./config/db.js');
+const clientRoutes = require('./routes/client.route.js');
 
 const app = express();
 
 app.use(express.json());
+app.use('/clients', clientRoutes);
 
 app.get("/", (req, res) => {
     res.send("Server Running");

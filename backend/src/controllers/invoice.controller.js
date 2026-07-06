@@ -18,6 +18,25 @@ async function createInvoice(req, res) {
 	}
 }
 
+async function createDelivery(req, res) {
+	try {
+		const invoiceId = Number(req.params.invoiceId);
+		const delivery = await invoiceService.createDelivery({ invoiceId });
+
+		return res.status(201).json({
+			success: true,
+			message: "Delivery started successfully",
+			data: delivery,
+		});
+	} catch (error) {
+		return res.status(error.statusCode || 500).json({
+			success: false,
+			message: error.message || "Failed to start delivery",
+		});
+	}
+}
+
 module.exports = {
 	createInvoice,
+	createDelivery,
 };

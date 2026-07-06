@@ -101,6 +101,83 @@ async function createInvoice({ clientId, items }) {
 	}
 }
 
+async function createDelivery({ invoiceId }) {
+	const id = Number(invoiceId);
+
+	if (!Number.isInteger(id) || id <= 0) {
+		const error = new Error("valid invoice id is required");
+		error.statusCode = 400;
+		throw error;
+	}
+
+	const connection = await pool.getConnection();
+
+	try {
+		await connection.beginTransaction();
+
+		const [invoiceRows] = await connection.query(
+			"SELECT id, clientId, status FROM invoices WHERE id = ? FOR UPDATE",
+			[id]
+		);
+
+		if (invoiceRows.length === 0) {
+			const error = new Error("invoice not found");
+			error.statusCode = 404;
+			throw error;
+		}
+
+		const invoice = invoiceRows[0];
+
+		if (invoice.status === "DELIVERED") {
+			const error = new Error("invoice already delivered");
+			error.statusCode = 409;
+			throw error;
+		}
+
+		const [activeDeliveryRows] = await connection.query(
+			"SELECT id FROM deliveries WHERE invoiceId = ? AND status IN ('PENDING', 'IDENTIFIED', 'OTP_SENT') LIMIT 1 FOR UPDATE",
+			[id]
+		);
+
+		if (activeDeliveryRows.length > 0) {
+			const error = new Error("active delivery already exists for this invoice");
+			error.statusCode = 409;
+			throw error;
+		}
+
+		const [deliveryResult] = await connection.query(
+			"INSERT INTO deliveries (invoiceId, status, identifyAttempts, otpAttempts) VALUES (?, 'PENDING', 0, 0)",
+			[id]
+		);
+
+		await connection.query(
+			"INSERT INTO delivery_history (deliveryId, eventType, description, metadata) VALUES (?, 'DELIVERY_CREATED', ?, JSON_OBJECT('invoiceId', ?, 'clientId', ?))",
+			[
+				deliveryResult.insertId,
+				"Delivery started",
+				id,
+				invoice.clientId,
+			]
+		);
+
+		await connection.commit();
+
+		return {
+			id: deliveryResult.insertId,
+			invoiceId: id,
+			status: "PENDING",
+			identifyAttempts: 0,
+			otpAttempts: 0,
+		};
+	} catch (error) {
+		await connection.rollback();
+		throw error;
+	} finally {
+		connection.release();
+	}
+}
+
 module.exports = {
 	createInvoice,
+	createDelivery,
 };

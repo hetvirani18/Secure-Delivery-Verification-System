@@ -3,12 +3,14 @@ require('dotenv/config');
 const pool = require('./config/db.js');
 const clientRoutes = require('./routes/client.route.js');
 const invoiceRoutes = require('./routes/invoice.route.js');
+const deliveryRoutes = require('./routes/delivery.route.js');
 
 const app = express();
 
 app.use(express.json());
 app.use('/clients', clientRoutes);
 app.use('/invoices', invoiceRoutes);
+app.use('/deliveries', deliveryRoutes);
 
 app.get("/", (req, res) => {
     res.send("Server Running");

@@ -281,7 +281,7 @@ async function sendOtp({ deliveryId }) {
     }
 }
 
-async function verifyOtp({ deliveryId, otp }) {
+async function verifyOtp({ deliveryId, otp, latitude, longitude }) {
     const id = deliveryId;
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -295,6 +295,10 @@ async function verifyOtp({ deliveryId, otp }) {
         error.statusCode = 400;
         throw error;
     }
+
+    // Normalise coords — null if not provided or invalid
+    const lat = latitude != null && Number.isFinite(Number(latitude)) ? Number(latitude) : null;
+    const lng = longitude != null && Number.isFinite(Number(longitude)) ? Number(longitude) : null;
 
     const connection = await pool.getConnection();
 
@@ -397,8 +401,11 @@ async function verifyOtp({ deliveryId, otp }) {
         );
 
         await connection.query(
-            `UPDATE invoices SET status='DELIVERED', deliveredAt=NOW() WHERE id=?`,
-            [delivery.invoiceId]
+            `UPDATE invoices
+             SET status='DELIVERED', deliveredAt=NOW(),
+                 deliveredLatitude=?, deliveredLongitude=?
+             WHERE id=?`,
+            [lat, lng, delivery.invoiceId]
         );
 
         await connection.query(
@@ -411,8 +418,11 @@ async function verifyOtp({ deliveryId, otp }) {
         await connection.query(
             `INSERT INTO delivery_history
             (deliveryId, eventType, description, metadata)
-            VALUES (?, 'DELIVERY_COMPLETED', ?, JSON_OBJECT())`,
-            [id, "Delivery completed"]
+            VALUES (?, 'DELIVERY_COMPLETED', ?, JSON_OBJECT(
+                'latitude', ?,
+                'longitude', ?
+            ))`,
+            [id, "Delivery completed", lat, lng]
         );
 
         // Duress path — silent alert, no visible difference to caller
@@ -420,14 +430,14 @@ async function verifyOtp({ deliveryId, otp }) {
             await connection.query(
                 `INSERT INTO delivery_history
                 (deliveryId, eventType, description, metadata)
-                VALUES (?, 'DURESS_TRIGGERED', ?, JSON_OBJECT('deliveryId', ?, 'invoiceId', ?))`,
-                [id, "Duress OTP used — silent alarm triggered", id, delivery.invoiceId]
+                VALUES (?, 'DURESS_TRIGGERED', ?, JSON_OBJECT('deliveryId', ?, 'invoiceId', ?, 'latitude', ?, 'longitude', ?))`,
+                [id, "Duress OTP used — silent alarm triggered", id, delivery.invoiceId, lat, lng]
             );
 
             await connection.query(
-                `INSERT INTO duress_alerts (deliveryId, invoiceId)
-                 VALUES (?, ?)`,
-                [id, delivery.invoiceId]
+                `INSERT INTO duress_alerts (deliveryId, invoiceId, latitude, longitude)
+                 VALUES (?, ?, ?, ?)`,
+                [id, delivery.invoiceId, lat, lng]
             );
         }
 

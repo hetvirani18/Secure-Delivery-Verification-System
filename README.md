@@ -24,7 +24,7 @@ using MySQL transactions and row-level locking.
 - Start Delivery
 - Receiver Identification
 - OTP Generation (real + duress hash stored, plain never persisted)
-- OTP Verification with Silent Duress Alarm
+- OTP Verification with Silent Duress Alarm and GPS Capture
 - Delivery History (append-only audit trail)
 - Client Summary
 - Concurrency Safe Invoice Generation
@@ -65,6 +65,8 @@ Design highlights:
 - Indexes on foreign keys and frequent lookup columns
 - duressOffset on receivers for silent alarm support
 - otpDuressHash on deliveries — both real and duress hashes stored, plain OTP never persisted
+- deliveredLatitude / deliveredLongitude on invoices — GPS coords captured at delivery completion
+- latitude / longitude on duress_alerts — location stored for emergency dispatch
 
 Schema file:
 - backend/schema.sql
@@ -207,14 +209,18 @@ Workflow:
 ### 6.7 POST /deliveries/:deliveryId/verify-otp
 
 Purpose:
-- Verify the OTP and complete the delivery. Silently triggers a duress alert if the duress OTP is used.
+- Verify the OTP and complete the delivery. Captures GPS coordinates. Silently triggers a duress alert if the duress OTP is used.
 
 Request body:
 ```json
 {
-	"otp": "123456"
+	"otp": "123456",
+	"latitude": 23.0225,
+	"longitude": 72.5714
 }
 ```
+
+`latitude` and `longitude` are optional. The frontend captures them automatically via `navigator.geolocation` before submitting.
 
 Workflow:
 1. Validate delivery id and 6-digit OTP.
@@ -223,8 +229,8 @@ Workflow:
 4. Reject if OTP is expired.
 5. Check submitted OTP against both the real hash and the duress hash (in parallel).
 6. If neither matches — increment attempt counter, fail at 3 attempts.
-7. If real OTP matches — mark delivery COMPLETED, invoice DELIVERED. Write OTP_VERIFIED and DELIVERY_COMPLETED events.
-8. If duress OTP matches — same as above (identical 200 response), but additionally insert a row into duress_alerts and write a DURESS_TRIGGERED event to delivery_history.
+7. If real OTP matches — mark delivery COMPLETED, update invoice to DELIVERED with GPS coords. Write OTP_VERIFIED and DELIVERY_COMPLETED (with coords in metadata) events.
+8. If duress OTP matches — same as above (identical 200 response), but additionally insert into duress_alerts (with coords) and write DURESS_TRIGGERED event.
 
 The response is identical for both real and duress paths — an observer cannot distinguish them.
 
@@ -287,7 +293,7 @@ Workflow:
 1. Run SELECT 1.
 2. Return success or failure JSON.
 
-## Part D — Duress PIN Silent Alarm
+## Part D — Duress PIN + GPS Delivery Proof
 
 Each receiver has a `duressOffset` set at enrollment. When an OTP is generated, the backend computes two valid 6-digit codes:
 
@@ -296,11 +302,14 @@ Each receiver has a `duressOffset` set at enrollment. When an OTP is generated, 
 
 Both codes are bcrypt-hashed before storage. The plain values are never persisted.
 
+On any successful verification, the frontend captures GPS coordinates via `navigator.geolocation` and sends them with the request. The backend stores them on the invoice (`deliveredLatitude`, `deliveredLongitude`) and in the `DELIVERY_COMPLETED` history metadata. For duress, the coordinates are also stored in `duress_alerts` — giving ops the exact location to dispatch to.
+
 Demo flow (Run Delivery page):
 1. Generate OTP — both codes are ready.
 2. **Tap** the reveal button — real OTP fills the input.
 3. **Hold 2 seconds** — duress OTP fills the input (looks identical to a watcher).
-4. Submit — delivery completes either way. Check `duress_alerts` table to confirm the silent alarm fired.
+4. Click Verify OTP — browser requests location, coords are sent with the OTP.
+5. Delivery completes either way. Check `duress_alerts` and `invoices` tables to confirm coords were stored.
 
 ## 7. Installation
 

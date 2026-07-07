@@ -116,7 +116,26 @@ function RunDeliveryPage() {
             setBusy(true);
             setError("");
             setMessage("");
-            const response = await verifyOtp(activeDelivery.id, otp);
+
+            // Get GPS coordinates from device before submitting
+            let latitude = null;
+            let longitude = null;
+            if (navigator.geolocation) {
+                try {
+                    const position = await new Promise((resolve, reject) =>
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            timeout: 5000,
+                            maximumAge: 0,
+                        })
+                    );
+                    latitude = position.coords.latitude;
+                    longitude = position.coords.longitude;
+                } catch {
+                    // GPS denied or unavailable — proceed without coords
+                }
+            }
+
+            const response = await verifyOtp(activeDelivery.id, otp, latitude, longitude);
             setActiveDelivery((current) => ({ ...(current || {}), status: response.data.status }));
             setCurrentOtp(null);
             setCurrentDuressOtp(null);

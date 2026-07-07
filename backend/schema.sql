@@ -37,6 +37,8 @@ CREATE TABLE invoices (
     totalValue DECIMAL(12,2) NOT NULL,
     status ENUM('PENDING', 'DELIVERED') NOT NULL DEFAULT 'PENDING',
     deliveredAt TIMESTAMP NULL,
+    deliveredLatitude DECIMAL(10,7) NULL,
+    deliveredLongitude DECIMAL(11,7) NULL,
     createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_invoice_client
@@ -138,6 +140,8 @@ CREATE TABLE duress_alerts (
     invoiceId BIGINT NOT NULL,
     triggeredAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     resolved BOOLEAN NOT NULL DEFAULT FALSE,
+    latitude DECIMAL(10,7) NULL,
+    longitude DECIMAL(11,7) NULL,
 
     CONSTRAINT fk_duress_delivery
         FOREIGN KEY (deliveryId)

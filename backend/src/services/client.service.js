@@ -1,5 +1,17 @@
 const pool = require("../config/db.js");
 
+function validateClientId(clientId) {
+	const id = Number(clientId);
+
+	if (!Number.isInteger(id) || id <= 0) {
+		const error = new Error("valid client id is required");
+		error.statusCode = 400;
+		throw error;
+	}
+
+	return id;
+}
+
 function validateClientInput({ name, phone }) {
 	if (!name || !phone) {
 		const error = new Error("name and phone are required");
@@ -67,7 +79,85 @@ async function addReceiver({ clientId, name, phone, photoUrl }) {
 }
 
 async function getClientSummary(clientId) {
-	//to be done
+	const id = validateClientId(clientId);
+
+	const [rows] = await pool.query(
+		`WITH latest_deliveries AS (
+			SELECT
+				d.invoiceId,
+				d.status,
+				ROW_NUMBER() OVER (
+					PARTITION BY d.invoiceId
+					ORDER BY d.createdAt DESC, d.id DESC
+				) AS rn
+			FROM deliveries d
+		),
+		top_receiver AS (
+			SELECT
+				r.id AS receiverId,
+				r.name AS receiverName,
+				COUNT(*) AS deliveryCount
+			FROM deliveries d
+			INNER JOIN invoices i
+				ON i.id = d.invoiceId
+			INNER JOIN receivers r
+				ON r.id = d.receiverId
+			WHERE i.clientId = ?
+				AND d.status = 'COMPLETED'
+			GROUP BY r.id, r.name
+			ORDER BY deliveryCount DESC, r.id ASC
+			LIMIT 1
+		)
+		SELECT
+			c.id,
+			c.name,
+			c.phone,
+			COUNT(DISTINCT i.id) AS totalInvoices,
+			COALESCE(SUM(CASE WHEN i.status = 'DELIVERED' THEN 1 ELSE 0 END), 0) AS deliveredCount,
+			COALESCE(SUM(CASE WHEN i.status = 'PENDING' AND (ld.status IS NULL OR ld.status <> 'FAILED') THEN 1 ELSE 0 END), 0) AS pendingCount,
+			COALESCE(SUM(CASE WHEN i.status = 'PENDING' AND ld.status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failedCount,
+			COALESCE(SUM(CASE WHEN i.status = 'DELIVERED' THEN i.totalValue ELSE 0 END), 0) AS totalDeliveredValue,
+			tr.receiverName AS topReceiver,
+			tr.receiverId AS topReceiverId,
+			COALESCE(tr.deliveryCount, 0) AS topReceiverDeliveries
+		FROM clients c
+		LEFT JOIN invoices i
+			ON i.clientId = c.id
+		LEFT JOIN latest_deliveries ld
+			ON ld.invoiceId = i.id
+			AND ld.rn = 1
+		LEFT JOIN top_receiver tr
+			ON 1 = 1
+		WHERE c.id = ?
+		GROUP BY c.id, c.name, c.phone, tr.receiverName, tr.deliveryCount, tr.receiverId`,
+		[id, id]
+	);
+
+	if (rows.length === 0) {
+		const error = new Error("client not found");
+		error.statusCode = 404;
+		throw error;
+	}
+
+	const summary = rows[0];
+
+	return {
+		id: summary.id,
+		name: summary.name,
+		phone: summary.phone,
+		totalInvoices: Number(summary.totalInvoices),
+		deliveredCount: Number(summary.deliveredCount),
+		pendingCount: Number(summary.pendingCount),
+		failedCount: Number(summary.failedCount),
+		totalDeliveredValue: Number(summary.totalDeliveredValue),
+		topReceiver: summary.topReceiver
+			? {
+				id: summary.topReceiverId,
+				name: summary.topReceiver,
+				deliveryCount: Number(summary.topReceiverDeliveries),
+			}
+			: null,
+	};
 }
 
 module.exports = {

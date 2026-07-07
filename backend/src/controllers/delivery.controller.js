@@ -56,8 +56,26 @@ async function verifyOtp(req, res) {
     }
 }
 
+async function getDeliveryHistory(req, res) {
+    try {
+        const deliveryId = Number(req.params.deliveryId);
+        const result = await deliveryService.getDeliveryHistory({ deliveryId });
+
+        return res.status(200).json({
+            success: true,
+            data: result,
+        });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || "Failed to get the History",
+        });
+    }
+}
+
 module.exports = {
     identifyReceiver,
     sendOtp,
-    verifyOtp
+    verifyOtp,
+    getDeliveryHistory
 };

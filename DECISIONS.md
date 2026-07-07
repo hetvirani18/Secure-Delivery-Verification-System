@@ -1,0 +1,2 @@
+# When OTP expires should we failed the delivery or just mark it as expired and let the user request a new OTP?
+- I think 3 min is too short so sometimes the user may not be able to enter the OTP in time. So I decided to mark the delivery as identified so user can request a new OTP. But if the user enters the wrong OTP 3 times then we should fail the delivery.

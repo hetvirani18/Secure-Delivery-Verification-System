@@ -346,7 +346,7 @@ async function verifyOtp({ deliveryId, otp }) {
 
             await connection.query(
                 `UPDATE deliveries
-                 SET status='FAILED'
+                 SET status='IDENTIFIED'
                  WHERE id=?`,
                 [id]
             );
@@ -366,7 +366,7 @@ async function verifyOtp({ deliveryId, otp }) {
 
             await connection.commit();
 
-            const error = new Error("OTP has expired delivery failed");
+            const error = new Error("OTP has expired. Please request a new OTP.");
             error.statusCode = 409;
             throw error;
         }
@@ -475,8 +475,53 @@ async function verifyOtp({ deliveryId, otp }) {
     }
 }
 
+async function getDeliveryHistory({ deliveryId }) {
+
+    const id = deliveryId;
+
+    if (!Number.isInteger(id) || id <= 0) {
+        const error = new Error("Valid delivery id is required");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    // Check delivery exists
+    const [deliveryRows] = await pool.query(
+        `SELECT id
+         FROM deliveries
+         WHERE id = ?`,
+        [id]
+    );
+
+    if (deliveryRows.length === 0) {
+        const error = new Error("Delivery not found");
+        error.statusCode = 404;
+        throw error;
+    }
+
+    // Fetch audit trail
+    const [historyRows] = await pool.query(
+        `SELECT
+            eventType,
+            description,
+            metadata,
+            createdAt
+         FROM delivery_history
+         WHERE deliveryId = ?
+         ORDER BY createdAt ASC, id ASC`,
+        [id]
+    );
+
+    return {
+        deliveryId: id,
+        totalEvents: historyRows.length,
+        history: historyRows
+    };
+}
+
 module.exports = {
     identifyReceiver,
     sendOtp,
-    verifyOtp
+    verifyOtp,
+    getDeliveryHistory
 };

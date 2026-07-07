@@ -21,12 +21,13 @@ async function createClient(req, res) {
 async function addReceiver(req, res) {
 	try {
 		const clientId = Number(req.params.id);
-		const { name, phone, photoUrl } = req.body;
+		const { name, phone, photoUrl, duressOffset } = req.body;
 		const receiver = await clientService.addReceiver({
 			clientId,
 			name,
 			phone,
 			photoUrl,
+			duressOffset,
 		});
 
 		return res.status(201).json({

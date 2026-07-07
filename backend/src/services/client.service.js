@@ -20,7 +20,7 @@ function validateClientInput({ name, phone }) {
 	}
 }
 
-function validateReceiverInput({ clientId, name, phone, photoUrl }) {
+function validateReceiverInput({ clientId, name, phone, photoUrl, duressOffset }) {
 	if (!clientId || Number.isNaN(clientId) || clientId < 1) {
 		const error = new Error("valid client id is required");
 		error.statusCode = 400;
@@ -31,6 +31,15 @@ function validateReceiverInput({ clientId, name, phone, photoUrl }) {
 		const error = new Error("name, phone, and photo_url are required");
 		error.statusCode = 400;
 		throw error;
+	}
+
+	if (duressOffset !== undefined) {
+		const offset = Number(duressOffset);
+		if (!Number.isInteger(offset) || offset < 1 || offset > 9999) {
+			const error = new Error("duressOffset must be an integer between 1 and 9999");
+			error.statusCode = 400;
+			throw error;
+		}
 	}
 }
 
@@ -49,8 +58,8 @@ async function createClient({ name, phone }) {
 	};
 }
 
-async function addReceiver({ clientId, name, phone, photoUrl }) {
-	validateReceiverInput({ clientId, name, phone, photoUrl });
+async function addReceiver({ clientId, name, phone, photoUrl, duressOffset }) {
+	validateReceiverInput({ clientId, name, phone, photoUrl, duressOffset });
 
 	const [clientRows] = await pool.query(
 		"SELECT id FROM clients WHERE id = ?",
@@ -63,9 +72,12 @@ async function addReceiver({ clientId, name, phone, photoUrl }) {
 		throw error;
 	}
 
+	// Use provided offset or generate a random one (1–9999)
+	const offset = duressOffset ? Number(duressOffset) : Math.floor(Math.random() * 9999) + 1;
+
 	const [result] = await pool.query(
-		"INSERT INTO receivers (clientId, name, phone, photoUrl) VALUES (?, ?, ?, ?)",
-		[clientId, name.trim(), phone.trim(), photoUrl.trim()]
+		"INSERT INTO receivers (clientId, name, phone, photoUrl, duressOffset) VALUES (?, ?, ?, ?, ?)",
+		[clientId, name.trim(), phone.trim(), photoUrl.trim(), offset]
 	);
 
 	return {
@@ -74,6 +86,7 @@ async function addReceiver({ clientId, name, phone, photoUrl }) {
 		name: name.trim(),
 		phone: phone.trim(),
 		photoUrl: photoUrl.trim(),
+		duressOffset: offset,
 		isActive: true,
 	};
 }

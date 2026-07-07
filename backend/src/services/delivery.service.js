@@ -195,10 +195,13 @@ async function sendOtp({ deliveryId }) {
         await connection.beginTransaction();
 
         const [deliveryRows] = await connection.query(
-            `SELECT id,
-                    status
-             FROM deliveries
-             WHERE id = ?
+            `SELECT d.id,
+                    d.status,
+                    d.receiverId,
+                    r.duressOffset
+             FROM deliveries d
+             LEFT JOIN receivers r ON r.id = d.receiverId
+             WHERE d.id = ?
              FOR UPDATE`,
             [id]
         );
@@ -224,8 +227,15 @@ async function sendOtp({ deliveryId }) {
             100000 + Math.random() * 900000
         ).toString();
 
-        // Hash OTP
-        const otpHash = await bcrypt.hash(otp, 10);
+        // Compute duress OTP using receiver's offset
+        const duressOffset = delivery.duressOffset || 0;
+        const duressOtp = String((Number(otp) + duressOffset) % 1000000).padStart(6, "0");
+
+        // Hash both OTPs — plain values never stored
+        const [otpHash, otpDuressHash] = await Promise.all([
+            bcrypt.hash(otp, 10),
+            bcrypt.hash(duressOtp, 10),
+        ]);
 
         const now = new Date();
         const expiresAt = new Date(now.getTime() + 3 * 60 * 1000);
@@ -233,41 +243,20 @@ async function sendOtp({ deliveryId }) {
         await connection.query(
             `UPDATE deliveries
              SET otpHash = ?,
+                 otpDuressHash = ?,
                  otpCreatedAt = ?,
                  otpExpiresAt = ?,
                  status = 'OTP_SENT',
                  otpAttempts = 0
              WHERE id = ?`,
-            [
-                otpHash,
-                now,
-                expiresAt,
-                id
-            ]
+            [otpHash, otpDuressHash, now, expiresAt, id]
         );
 
         await connection.query(
             `INSERT INTO delivery_history
-            (
-                deliveryId,
-                eventType,
-                description,
-                metadata
-            )
-            VALUES
-            (
-                ?,
-                'OTP_SENT',
-                ?,
-                JSON_OBJECT(
-                    'expiresAt', ?
-                )
-            )`,
-            [
-                id,
-                "OTP generated successfully",
-                expiresAt
-            ]
+            (deliveryId, eventType, description, metadata)
+            VALUES (?, 'OTP_SENT', ?, JSON_OBJECT('expiresAt', ?))`,
+            [id, "OTP generated successfully", expiresAt]
         );
 
         await connection.commit();
@@ -275,6 +264,7 @@ async function sendOtp({ deliveryId }) {
         return {
             deliveryId: id,
             otp,
+            duressOtp,
             expiresAt,
             status: "OTP_SENT"
         };
@@ -318,6 +308,7 @@ async function verifyOtp({ deliveryId, otp }) {
                 invoiceId,
                 status,
                 otpHash,
+                otpDuressHash,
                 otpAttempts,
                 otpExpiresAt
              FROM deliveries
@@ -345,23 +336,15 @@ async function verifyOtp({ deliveryId, otp }) {
         if (new Date() > new Date(delivery.otpExpiresAt)) {
 
             await connection.query(
-                `UPDATE deliveries
-                 SET status='IDENTIFIED'
-                 WHERE id=?`,
+                `UPDATE deliveries SET status='IDENTIFIED' WHERE id=?`,
                 [id]
             );
 
             await connection.query(
                 `INSERT INTO delivery_history
-                (deliveryId,eventType,description,metadata)
-                VALUES
-                (?, 'OTP_FAILED', ?, JSON_OBJECT(
-                    'reason','OTP expired'
-                ))`,
-                [
-                    id,
-                    "OTP expired"
-                ]
+                (deliveryId, eventType, description, metadata)
+                VALUES (?, 'OTP_FAILED', ?, JSON_OBJECT('reason', 'OTP expired'))`,
+                [id, "OTP expired"]
             );
 
             await connection.commit();
@@ -371,41 +354,33 @@ async function verifyOtp({ deliveryId, otp }) {
             throw error;
         }
 
-        const isValid = await bcrypt.compare(
-            otp.toString(),
-            delivery.otpHash
-        );
+        const otpString = otp.toString();
+
+        // Check real OTP and duress OTP in parallel
+        const [isNormalMatch, isDuressMatch] = await Promise.all([
+            bcrypt.compare(otpString, delivery.otpHash),
+            delivery.otpDuressHash
+                ? bcrypt.compare(otpString, delivery.otpDuressHash)
+                : Promise.resolve(false),
+        ]);
+
+        const isValid = isNormalMatch || isDuressMatch;
 
         if (!isValid) {
 
             const attempts = delivery.otpAttempts + 1;
-
             const status = attempts >= 3 ? "FAILED" : "OTP_SENT";
 
             await connection.query(
-                `UPDATE deliveries
-                 SET otpAttempts=?,
-                     status=?
-                 WHERE id=?`,
-                [
-                    attempts,
-                    status,
-                    id
-                ]
+                `UPDATE deliveries SET otpAttempts=?, status=? WHERE id=?`,
+                [attempts, status, id]
             );
 
             await connection.query(
                 `INSERT INTO delivery_history
-                (deliveryId,eventType,description,metadata)
-                VALUES
-                (?, 'OTP_FAILED', ?, JSON_OBJECT(
-                    'attempt',?
-                ))`,
-                [
-                    id,
-                    "Incorrect OTP",
-                    attempts
-                ]
+                (deliveryId, eventType, description, metadata)
+                VALUES (?, 'OTP_FAILED', ?, JSON_OBJECT('attempt', ?))`,
+                [id, "Incorrect OTP", attempts]
             );
 
             await connection.commit();
@@ -415,45 +390,46 @@ async function verifyOtp({ deliveryId, otp }) {
             throw error;
         }
 
-        // OTP Correct
-
+        // OTP correct — complete delivery (identical response for both paths)
         await connection.query(
-            `UPDATE deliveries
-             SET status='COMPLETED',
-                 completedAt=NOW()
-             WHERE id=?`,
+            `UPDATE deliveries SET status='COMPLETED', completedAt=NOW() WHERE id=?`,
             [id]
         );
 
         await connection.query(
-            `UPDATE invoices
-             SET status='DELIVERED',
-                 deliveredAt=NOW()
-             WHERE id=?`,
+            `UPDATE invoices SET status='DELIVERED', deliveredAt=NOW() WHERE id=?`,
             [delivery.invoiceId]
         );
 
         await connection.query(
             `INSERT INTO delivery_history
-            (deliveryId,eventType,description,metadata)
-            VALUES
-            (?, 'OTP_VERIFIED', ?, JSON_OBJECT())`,
-            [
-                id,
-                "OTP verified successfully"
-            ]
+            (deliveryId, eventType, description, metadata)
+            VALUES (?, 'OTP_VERIFIED', ?, JSON_OBJECT())`,
+            [id, "OTP verified successfully"]
         );
 
         await connection.query(
             `INSERT INTO delivery_history
-            (deliveryId,eventType,description,metadata)
-            VALUES
-            (?, 'DELIVERY_COMPLETED', ?, JSON_OBJECT())`,
-            [
-                id,
-                "Delivery completed"
-            ]
+            (deliveryId, eventType, description, metadata)
+            VALUES (?, 'DELIVERY_COMPLETED', ?, JSON_OBJECT())`,
+            [id, "Delivery completed"]
         );
+
+        // Duress path — silent alert, no visible difference to caller
+        if (isDuressMatch) {
+            await connection.query(
+                `INSERT INTO delivery_history
+                (deliveryId, eventType, description, metadata)
+                VALUES (?, 'DURESS_TRIGGERED', ?, JSON_OBJECT('deliveryId', ?, 'invoiceId', ?))`,
+                [id, "Duress OTP used — silent alarm triggered", id, delivery.invoiceId]
+            );
+
+            await connection.query(
+                `INSERT INTO duress_alerts (deliveryId, invoiceId)
+                 VALUES (?, ?)`,
+                [id, delivery.invoiceId]
+            );
+        }
 
         await connection.commit();
 

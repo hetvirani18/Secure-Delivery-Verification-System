@@ -18,15 +18,14 @@ using MySQL transactions and row-level locking.
 
 ## 3. Features
 
-
 - Create Clients
-- Add Authorized Receivers
+- Add Authorized Receivers (with optional duress offset)
 - Create Invoices
 - Start Delivery
 - Receiver Identification
-- OTP Generation
-- OTP Verification
-- Delivery History
+- OTP Generation (real + duress hash stored, plain never persisted)
+- OTP Verification with Silent Duress Alarm
+- Delivery History (append-only audit trail)
 - Client Summary
 - Concurrency Safe Invoice Generation
 - Concurrency Safe Delivery Creation
@@ -56,6 +55,7 @@ Main tables:
 - invoice_items
 - deliveries
 - delivery_history
+- duress_alerts
 
 Design highlights:
 - Foreign keys between all core entities
@@ -63,6 +63,8 @@ Design highlights:
 - nextInvoiceSeq on clients for per-client invoice sequencing
 - Delivery history append-only protection via triggers
 - Indexes on foreign keys and frequent lookup columns
+- duressOffset on receivers for silent alarm support
+- otpDuressHash on deliveries — both real and duress hashes stored, plain OTP never persisted
 
 Schema file:
 - backend/schema.sql
@@ -98,15 +100,19 @@ Request body:
 {
 	"name": "John Receiver",
 	"phone": "9990011223",
-	"photoUrl": "https://example.com/john.jpg"
+	"photoUrl": "https://example.com/john.jpg",
+	"duressOffset": 4821
 }
 ```
+
+`duressOffset` is optional (integer 1–9999). If omitted, a random value is assigned automatically. This is the receiver's secret — used to compute the duress OTP during delivery.
 
 Workflow:
 1. Validate client id and receiver payload.
 2. Confirm client exists.
-3. Insert receiver linked to client.
-4. Return created receiver.
+3. Assign duressOffset (provided or random).
+4. Insert receiver linked to client.
+5. Return created receiver including duressOffset.
 
 ### 6.3 POST /invoices
 
@@ -190,14 +196,18 @@ Workflow:
 1. Validate delivery id.
 2. Start transaction and lock the delivery row.
 3. Confirm the delivery exists and is in IDENTIFIED state.
-4. Generate a random 6-digit OTP and hash it before storage.
-5. Set the delivery to OTP_SENT and store the OTP expiry timestamp.
-6. Write an OTP_SENT event to delivery_history.
+4. Fetch the identified receiver's duressOffset.
+5. Generate a random 6-digit real OTP.
+6. Compute duress OTP: `(realOtp + duressOffset) % 1000000`.
+7. Hash both OTPs with bcrypt — plain values are never stored.
+8. Set the delivery to OTP_SENT and store both hashes and the expiry timestamp.
+9. Write an OTP_SENT event to delivery_history.
+10. Return both OTPs in the response (demo only — in production the duress OTP would be derived client-side).
 
 ### 6.7 POST /deliveries/:deliveryId/verify-otp
 
 Purpose:
-- Verify the OTP and complete the delivery.
+- Verify the OTP and complete the delivery. Silently triggers a duress alert if the duress OTP is used.
 
 Request body:
 ```json
@@ -210,12 +220,65 @@ Workflow:
 1. Validate delivery id and 6-digit OTP.
 2. Start transaction and lock the delivery row.
 3. Confirm the delivery exists and is in OTP_SENT state.
-4. Reject the OTP if it is expired.
-5. Compare the supplied OTP with the stored hash.
-6. On success, mark the delivery COMPLETED and the invoice DELIVERED.
-7. Write OTP verification and delivery completion events to delivery_history.
+4. Reject if OTP is expired.
+5. Check submitted OTP against both the real hash and the duress hash (in parallel).
+6. If neither matches — increment attempt counter, fail at 3 attempts.
+7. If real OTP matches — mark delivery COMPLETED, invoice DELIVERED. Write OTP_VERIFIED and DELIVERY_COMPLETED events.
+8. If duress OTP matches — same as above (identical 200 response), but additionally insert a row into duress_alerts and write a DURESS_TRIGGERED event to delivery_history.
 
-### 6.8 GET /health
+The response is identical for both real and duress paths — an observer cannot distinguish them.
+
+### 6.8 GET /clients/:id/summary
+
+Purpose:
+- Return a summary for a client in a single SQL query.
+
+Response includes:
+- Total invoices
+- Delivered / pending / failed counts
+- Total delivered value
+- The receiver who accepted the most deliveries
+
+Workflow:
+1. Validate client id.
+2. Run a single aggregated SQL query with CTEs — no N+1, no JS loops.
+3. Return summary object.
+
+### 6.9 GET /invoices
+
+Purpose:
+- Return all PENDING invoices that have no active delivery.
+
+Used by the frontend Run Delivery page to populate the invoice selector.
+
+Workflow:
+1. Use a CTE to find the latest delivery per invoice.
+2. Return only invoices that are PENDING with no active delivery (or last delivery was FAILED).
+3. Return list ordered by most recent first.
+
+### 6.10 GET /deliveries
+
+Purpose:
+- Return all deliveries (latest per invoice) with client, receiver, invoice, and last event details.
+
+Used by the frontend board to display all deliveries grouped by status.
+
+Workflow:
+1. Use a CTE with ROW_NUMBER to pick the latest delivery per invoice.
+2. Join clients, invoices, receivers, and latest history event.
+3. Return all deliveries ordered by most recent first.
+
+### 6.11 GET /deliveries/:deliveryId/history
+
+Purpose:
+- Return the full append-only audit trail for a single delivery.
+
+Workflow:
+1. Validate delivery id.
+2. Confirm delivery exists.
+3. Return all delivery_history rows for that delivery ordered by createdAt ASC, id ASC.
+
+### 6.12 GET /health
 
 Purpose:
 - Verify API and DB connectivity.
@@ -223,6 +286,21 @@ Purpose:
 Workflow:
 1. Run SELECT 1.
 2. Return success or failure JSON.
+
+## Part D — Duress PIN Silent Alarm
+
+Each receiver has a `duressOffset` set at enrollment. When an OTP is generated, the backend computes two valid 6-digit codes:
+
+- **Real OTP** — normal delivery completion.
+- **Duress OTP** — `(realOtp + duressOffset) % 1000000` — also completes the delivery with an identical response, but silently inserts into `duress_alerts` and writes a `DURESS_TRIGGERED` event to the audit trail.
+
+Both codes are bcrypt-hashed before storage. The plain values are never persisted.
+
+Demo flow (Run Delivery page):
+1. Generate OTP — both codes are ready.
+2. **Tap** the reveal button — real OTP fills the input.
+3. **Hold 2 seconds** — duress OTP fills the input (looks identical to a watcher).
+4. Submit — delivery completes either way. Check `duress_alerts` table to confirm the silent alarm fired.
 
 ## 7. Installation
 

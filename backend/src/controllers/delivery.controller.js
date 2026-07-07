@@ -19,6 +19,45 @@ async function identifyReceiver(req, res) {
     }
 }
 
+async function sendOtp(req, res) {
+    try {
+        const deliveryId = Number(req.params.deliveryId);
+        const result = await deliveryService.sendOtp({ deliveryId });
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP sent successfully",
+            data: result,
+        });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || "Failed to send OTP",
+        });
+    }
+}
+
+async function verifyOtp(req, res) {
+    try {
+        const deliveryId = Number(req.params.deliveryId);
+        const {otp} = req.body;
+        const result = await deliveryService.verifyOtp({ deliveryId, otp });
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP Verified successfully and Delivery is Completed",
+            data: result,
+        });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || "Failed to verify OTP",
+        });
+    }
+}
+
 module.exports = {
-    identifyReceiver
+    identifyReceiver,
+    sendOtp,
+    verifyOtp
 };

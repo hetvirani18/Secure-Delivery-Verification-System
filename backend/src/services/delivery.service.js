@@ -1,4 +1,5 @@
 const pool = require("../config/db.js");
+const bcrypt = require("bcrypt");
 
 function validateIdentifyInput({ deliveryId, receiverId, similarity }) {
 
@@ -179,6 +180,303 @@ async function identifyReceiver({ deliveryId, receiverId, similarity }) {
     }
 }
 
+async function sendOtp({ deliveryId }) {
+    const id = Number(deliveryId);
+
+    if (!Number.isInteger(id) || id <= 0) {
+        const error = new Error("Valid delivery id is required");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const [deliveryRows] = await connection.query(
+            `SELECT id,
+                    status
+             FROM deliveries
+             WHERE id = ?
+             FOR UPDATE`,
+            [id]
+        );
+
+        if (deliveryRows.length === 0) {
+            const error = new Error("Delivery not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const delivery = deliveryRows[0];
+
+        if (delivery.status !== "IDENTIFIED") {
+            const error = new Error(
+                "OTP can only be sent after successful identification"
+            );
+            error.statusCode = 409;
+            throw error;
+        }
+
+        // Generate random 6-digit OTP
+        const otp = Math.floor(
+            100000 + Math.random() * 900000
+        ).toString();
+
+        // Hash OTP
+        const otpHash = await bcrypt.hash(otp, 10);
+
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 3 * 60 * 1000);
+
+        await connection.query(
+            `UPDATE deliveries
+             SET otpHash = ?,
+                 otpCreatedAt = ?,
+                 otpExpiresAt = ?,
+                 status = 'OTP_SENT',
+                 otpAttempts = 0
+             WHERE id = ?`,
+            [
+                otpHash,
+                now,
+                expiresAt,
+                id
+            ]
+        );
+
+        await connection.query(
+            `INSERT INTO delivery_history
+            (
+                deliveryId,
+                eventType,
+                description,
+                metadata
+            )
+            VALUES
+            (
+                ?,
+                'OTP_SENT',
+                ?,
+                JSON_OBJECT(
+                    'expiresAt', ?
+                )
+            )`,
+            [
+                id,
+                "OTP generated successfully",
+                expiresAt
+            ]
+        );
+
+        await connection.commit();
+
+        return {
+            deliveryId: id,
+            otp,
+            expiresAt,
+            status: "OTP_SENT"
+        };
+
+    } catch (error) {
+
+        await connection.rollback();
+        throw error;
+
+    } finally {
+
+        connection.release();
+
+    }
+}
+
+async function verifyOtp({ deliveryId, otp }) {
+    const id = deliveryId;
+
+    if (!Number.isInteger(id) || id <= 0) {
+        const error = new Error("Valid delivery id is required");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (!otp || otp.toString().trim().length !== 6) {
+        const error = new Error("Valid 6-digit OTP is required");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+
+        await connection.beginTransaction();
+
+        const [deliveryRows] = await connection.query(
+            `SELECT
+                id,
+                invoiceId,
+                status,
+                otpHash,
+                otpAttempts,
+                otpExpiresAt
+             FROM deliveries
+             WHERE id = ?
+             FOR UPDATE`,
+            [id]
+        );
+
+        if (deliveryRows.length === 0) {
+            const error = new Error("Delivery not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const delivery = deliveryRows[0];
+
+        if (delivery.status !== "OTP_SENT") {
+            const error = new Error(
+                "OTP verification is not allowed"
+            );
+            error.statusCode = 409;
+            throw error;
+        }
+
+        if (new Date() > new Date(delivery.otpExpiresAt)) {
+
+            await connection.query(
+                `UPDATE deliveries
+                 SET status='FAILED'
+                 WHERE id=?`,
+                [id]
+            );
+
+            await connection.query(
+                `INSERT INTO delivery_history
+                (deliveryId,eventType,description,metadata)
+                VALUES
+                (?, 'OTP_FAILED', ?, JSON_OBJECT(
+                    'reason','OTP expired'
+                ))`,
+                [
+                    id,
+                    "OTP expired"
+                ]
+            );
+
+            await connection.commit();
+
+            const error = new Error("OTP has expired delivery failed");
+            error.statusCode = 409;
+            throw error;
+        }
+
+        const isValid = await bcrypt.compare(
+            otp.toString(),
+            delivery.otpHash
+        );
+
+        if (!isValid) {
+
+            const attempts = delivery.otpAttempts + 1;
+
+            const status = attempts >= 3 ? "FAILED" : "OTP_SENT";
+
+            await connection.query(
+                `UPDATE deliveries
+                 SET otpAttempts=?,
+                     status=?
+                 WHERE id=?`,
+                [
+                    attempts,
+                    status,
+                    id
+                ]
+            );
+
+            await connection.query(
+                `INSERT INTO delivery_history
+                (deliveryId,eventType,description,metadata)
+                VALUES
+                (?, 'OTP_FAILED', ?, JSON_OBJECT(
+                    'attempt',?
+                ))`,
+                [
+                    id,
+                    "Incorrect OTP",
+                    attempts
+                ]
+            );
+
+            await connection.commit();
+
+            const error = new Error("Incorrect OTP");
+            error.statusCode = 409;
+            throw error;
+        }
+
+        // OTP Correct
+
+        await connection.query(
+            `UPDATE deliveries
+             SET status='COMPLETED',
+                 completedAt=NOW()
+             WHERE id=?`,
+            [id]
+        );
+
+        await connection.query(
+            `UPDATE invoices
+             SET status='DELIVERED',
+                 deliveredAt=NOW()
+             WHERE id=?`,
+            [delivery.invoiceId]
+        );
+
+        await connection.query(
+            `INSERT INTO delivery_history
+            (deliveryId,eventType,description,metadata)
+            VALUES
+            (?, 'OTP_VERIFIED', ?, JSON_OBJECT())`,
+            [
+                id,
+                "OTP verified successfully"
+            ]
+        );
+
+        await connection.query(
+            `INSERT INTO delivery_history
+            (deliveryId,eventType,description,metadata)
+            VALUES
+            (?, 'DELIVERY_COMPLETED', ?, JSON_OBJECT())`,
+            [
+                id,
+                "Delivery completed"
+            ]
+        );
+
+        await connection.commit();
+
+        return {
+            deliveryId: id,
+            invoiceId: delivery.invoiceId,
+            status: "COMPLETED"
+        };
+
+    } catch (error) {
+
+        await connection.rollback();
+        throw error;
+
+    } finally {
+
+        connection.release();
+
+    }
+}
+
 module.exports = {
-    identifyReceiver
+    identifyReceiver,
+    sendOtp,
+    verifyOtp
 };

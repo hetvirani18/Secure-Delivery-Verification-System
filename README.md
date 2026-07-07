@@ -24,6 +24,7 @@ using MySQL transactions and row-level locking.
 - Create Invoices
 - Start Delivery
 - Receiver Identification
+- OTP Generation
 - OTP Verification
 - Delivery History
 - Client Summary
@@ -43,6 +44,8 @@ Identify Receiver
 -> Send OTP
 -> Verify OTP
 -> Delivery Completed
+
+Delivery endpoints are mounted under `/deliveries`.
 
 ## 5. Database Design
 
@@ -151,7 +154,68 @@ Workflow:
 8. Insert DELIVERY_CREATED event into delivery_history.
 9. Commit transaction.
 
-### 6.5 GET /health
+### 6.5 POST /deliveries/:deliveryId/identify
+
+Purpose:
+- Identify the receiver for an active delivery.
+
+Request body:
+```json
+{
+	"receiverId": 12,
+	"similarity": 92
+}
+```
+
+Workflow:
+1. Validate delivery id, receiver id, and similarity score.
+2. Start transaction and lock the delivery row.
+3. Confirm the delivery exists and is in PENDING state.
+4. Confirm the receiver exists, belongs to the same client, and is active.
+5. Require similarity score to be at least 85.
+6. Update the delivery to IDENTIFIED and store the receiver id.
+7. Write an identify success or failure event to delivery_history.
+
+### 6.6 POST /deliveries/:deliveryId/send-otp
+
+Purpose:
+- Generate and store a time-limited OTP after successful identification.
+
+Request body:
+```json
+{}
+```
+
+Workflow:
+1. Validate delivery id.
+2. Start transaction and lock the delivery row.
+3. Confirm the delivery exists and is in IDENTIFIED state.
+4. Generate a random 6-digit OTP and hash it before storage.
+5. Set the delivery to OTP_SENT and store the OTP expiry timestamp.
+6. Write an OTP_SENT event to delivery_history.
+
+### 6.7 POST /deliveries/:deliveryId/verify-otp
+
+Purpose:
+- Verify the OTP and complete the delivery.
+
+Request body:
+```json
+{
+	"otp": "123456"
+}
+```
+
+Workflow:
+1. Validate delivery id and 6-digit OTP.
+2. Start transaction and lock the delivery row.
+3. Confirm the delivery exists and is in OTP_SENT state.
+4. Reject the OTP if it is expired.
+5. Compare the supplied OTP with the stored hash.
+6. On success, mark the delivery COMPLETED and the invoice DELIVERED.
+7. Write OTP verification and delivery completion events to delivery_history.
+
+### 6.8 GET /health
 
 Purpose:
 - Verify API and DB connectivity.
@@ -236,12 +300,15 @@ Secure-Delivery-Verification-System/
 │       │   └── db.js
 │       ├── controllers/
 │       │   ├── client.controller.js
+│       │   ├── delivery.controller.js
 │       │   └── invoice.controller.js
 │       ├── routes/
 │       │   ├── client.route.js
+│       │   ├── delivery.route.js
 │       │   └── invoice.route.js
 │       ├── services/
 │       │   ├── client.service.js
+│       │   ├── delivery.service.js
 │       │   └── invoice.service.js
 │       └── index.js
 ├── DECISIONS.md

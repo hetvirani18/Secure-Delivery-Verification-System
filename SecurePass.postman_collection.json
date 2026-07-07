@@ -1,0 +1,268 @@
+{
+  "info": {
+    "_postman_id": "6f4f33a9-5fc6-41ef-9842-ac89aa68133b",
+    "name": "SecurePass",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "45769357",
+    "_collection_link": "https://go.postman.co/collection/45769357-6f4f33a9-5fc6-41ef-9842-ac89aa68133b?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "client",
+      "item": [
+        {
+          "name": "/",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"name\": \"Het\",\r\n    \"phone\": \"9016850921\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "localhost:5000/clients",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "clients"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/:id/receivers",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"name\": \"hiralben\",\r\n    \"phone\": \"9727881132\",\r\n    \"photoUrl\": \"https://media.gettyimages.com/id/2099403180/photo/laughing-yougn-businesswoman-standing-with-her-arms-crossed-against-an-office-wall.jpg?s=1024x1024&w=gi&k=20&c=g-liJalK5K_TNRc49sQeR1HFC4OaY_crXKcEuJIH93E=\",\r\n    \"duressOffset\": 100\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "localhost:5000/clients/1/receivers",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "clients",
+                "1",
+                "receivers"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/:id/summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "localhost:5000/clients/1/summary",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "clients",
+                "1",
+                "summary"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "inoice",
+      "item": [
+        {
+          "name": "/",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"clientId\": \"1\",\r\n    \"items\": [\r\n        {\r\n            \"itemName\": \"gold coint\",\r\n            \"quantity\": \"2\",\r\n            \"unitValue\": 10000\r\n        },\r\n        {\r\n            \"itemName\": \"silver coint\",\r\n            \"quantity\": \"3\",\r\n            \"unitValue\": 5000\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "localhost:5000/invoices/",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "invoices",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/:invoiceId/deliveries",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "localhost:5000/invoices/1/deliveries",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "invoices",
+                "1",
+                "deliveries"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "delivery",
+      "item": [
+        {
+          "name": "/:deliveryId/identify",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"receiverId\": \"1\",\r\n    \"similarity\": 50\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "localhost:5000/deliveries/1/identify",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "deliveries",
+                "1",
+                "identify"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/:deliveryId/send-otp",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "localhost:5000/deliveries/2/send-otp",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "deliveries",
+                "2",
+                "send-otp"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/:deliveryId/verify-otp",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"otp\": 399971,\r\n    \"latitude\": 72.1221,\r\n    \"longitude\": 77.8392\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "localhost:5000/deliveries/2/verify-otp",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "deliveries",
+                "2",
+                "verify-otp"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/:deliveryId/history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "localhost:5000/deliveries/4/history",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "deliveries",
+                "4",
+                "history"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

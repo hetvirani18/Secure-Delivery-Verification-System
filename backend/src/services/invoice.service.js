@@ -177,7 +177,55 @@ async function createDelivery({ invoiceId }) {
 	}
 }
 
+async function getInvoices() {
+	const [rows] = await pool.query(
+		`WITH latest_deliveries AS (
+			SELECT
+				d.*,
+				ROW_NUMBER() OVER (
+					PARTITION BY d.invoiceId
+					ORDER BY d.createdAt DESC, d.id DESC
+				) AS rn
+			FROM deliveries d
+		)
+		SELECT
+			i.id,
+			i.clientId,
+			c.name AS clientName,
+			i.invoiceSeq,
+			i.invoiceNumber,
+			i.totalValue,
+			i.status,
+			i.createdAt
+		FROM invoices i
+		INNER JOIN clients c
+			ON c.id = i.clientId
+		LEFT JOIN latest_deliveries ld
+			ON ld.invoiceId = i.id
+			AND ld.rn = 1
+		WHERE
+			i.status = 'PENDING'
+			AND (
+				ld.id IS NULL
+				OR ld.status = 'FAILED'
+			)
+		ORDER BY i.createdAt DESC, i.id DESC`
+	);
+
+	return rows.map((row) => ({
+		id: row.id,
+		clientId: row.clientId,
+		clientName: row.clientName,
+		invoiceSeq: row.invoiceSeq,
+		invoiceNumber: row.invoiceNumber,
+		totalValue: Number(row.totalValue),
+		status: row.status,
+		createdAt: row.createdAt,
+	}));
+}
+
 module.exports = {
 	createInvoice,
 	createDelivery,
+	getInvoices,
 };

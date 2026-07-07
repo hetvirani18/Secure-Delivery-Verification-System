@@ -73,9 +73,26 @@ async function getDeliveryHistory(req, res) {
     }
 }
 
+async function getDeliveries(req, res) {
+    try {
+        const deliveries = await deliveryService.getDeliveries();
+
+        return res.status(200).json({
+            success: true,
+            data: deliveries,
+        });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || "Failed to fetch deliveries",
+        });
+    }
+}
+
 module.exports = {
     identifyReceiver,
     sendOtp,
     verifyOtp,
-    getDeliveryHistory
+    getDeliveryHistory,
+    getDeliveries
 };

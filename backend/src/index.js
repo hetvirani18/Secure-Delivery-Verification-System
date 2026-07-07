@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 require('dotenv/config');
 const pool = require('./config/db.js');
 const clientRoutes = require('./routes/client.route.js');
@@ -7,6 +8,7 @@ const deliveryRoutes = require('./routes/delivery.route.js');
 
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 app.use('/clients', clientRoutes);
 app.use('/invoices', invoiceRoutes);

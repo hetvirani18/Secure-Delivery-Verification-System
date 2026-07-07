@@ -519,9 +519,98 @@ async function getDeliveryHistory({ deliveryId }) {
     };
 }
 
+async function getDeliveries() {
+
+    const [rows] = await pool.query(
+        `WITH latest_deliveries AS (
+            SELECT
+                d.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY d.invoiceId
+                    ORDER BY d.createdAt DESC, d.id DESC
+                ) AS rn
+            FROM deliveries d
+        ),
+        latest_history AS (
+            SELECT
+                deliveryId,
+                eventType,
+                description,
+                createdAt
+            FROM (
+                SELECT
+                    deliveryId,
+                    eventType,
+                    description,
+                    createdAt,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY deliveryId
+                        ORDER BY createdAt DESC, id DESC
+                    ) AS rn
+                FROM delivery_history
+            ) ranked_history
+            WHERE rn = 1
+        )
+        SELECT
+            d.id,
+            d.invoiceId,
+            i.invoiceNumber,
+            i.totalValue,
+            i.status AS invoiceStatus,
+            c.id AS clientId,
+            c.name AS clientName,
+            d.receiverId,
+            r.name AS receiverName,
+            d.status,
+            d.identifyAttempts,
+            d.otpAttempts,
+            d.createdAt,
+            d.completedAt,
+            lh.eventType AS latestEventType,
+            lh.description AS latestEventDescription,
+            lh.createdAt AS latestEventAt
+        FROM latest_deliveries d
+        INNER JOIN invoices i
+            ON i.id = d.invoiceId
+        INNER JOIN clients c
+            ON c.id = i.clientId
+        LEFT JOIN receivers r
+            ON r.id = d.receiverId
+        LEFT JOIN latest_history lh
+            ON lh.deliveryId = d.id
+        WHERE d.rn = 1
+        ORDER BY d.createdAt DESC, d.id DESC`
+    );
+
+    return rows.map((row) => ({
+        id: row.id,
+        invoiceId: row.invoiceId,
+        invoiceNumber: row.invoiceNumber,
+        totalValue: Number(row.totalValue),
+        invoiceStatus: row.invoiceStatus,
+        clientId: row.clientId,
+        clientName: row.clientName,
+        receiverId: row.receiverId,
+        receiverName: row.receiverName,
+        status: row.status,
+        identifyAttempts: row.identifyAttempts,
+        otpAttempts: row.otpAttempts,
+        createdAt: row.createdAt,
+        completedAt: row.completedAt,
+        latestEvent: row.latestEventType
+            ? {
+                type: row.latestEventType,
+                description: row.latestEventDescription,
+                createdAt: row.latestEventAt,
+            }
+            : null,
+    }));
+}
+
 module.exports = {
     identifyReceiver,
     sendOtp,
     verifyOtp,
-    getDeliveryHistory
+    getDeliveryHistory,
+    getDeliveries
 };

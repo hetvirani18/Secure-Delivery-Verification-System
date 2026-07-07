@@ -36,7 +36,24 @@ async function createDelivery(req, res) {
 	}
 }
 
+async function getInvoices(req, res) {
+	try {
+		const invoices = await invoiceService.getInvoices();
+
+		return res.status(200).json({
+			success: true,
+			data: invoices,
+		});
+	} catch (error) {
+		return res.status(error.statusCode || 500).json({
+			success: false,
+			message: error.message || "Failed to fetch invoices",
+		});
+	}
+}
+
 module.exports = {
 	createInvoice,
 	createDelivery,
+	getInvoices,
 };

@@ -71,6 +71,9 @@ export function buildTimeline(history) {
 		} else if (event.eventType === "DELIVERY_CREATED") {
 			title = "Delivery started";
 			description = event.description || "Delivery row created";
+		} else if (event.eventType === "DURESS_TRIGGERED") {
+			title = "🚨 Duress alert triggered";
+			description = "Silent alarm fired — ops team notified";
 		}
 
 		return {

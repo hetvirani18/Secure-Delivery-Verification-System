@@ -17,6 +17,7 @@ CREATE TABLE receivers (
     phone VARCHAR(15) NOT NULL,
     photoUrl VARCHAR(255) NOT NULL,
     isActive BOOLEAN NOT NULL DEFAULT TRUE,
+    duressOffset INT NOT NULL DEFAULT 0,
     createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_receiver_client
@@ -36,6 +37,8 @@ CREATE TABLE invoices (
     totalValue DECIMAL(12,2) NOT NULL,
     status ENUM('PENDING', 'DELIVERED') NOT NULL DEFAULT 'PENDING',
     deliveredAt TIMESTAMP NULL,
+    deliveredLatitude DECIMAL(10,7) NULL,
+    deliveredLongitude DECIMAL(11,7) NULL,
     createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_invoice_client
@@ -78,6 +81,7 @@ CREATE TABLE deliveries (
     identifyAttempts INT NOT NULL DEFAULT 0,
     otpAttempts INT NOT NULL DEFAULT 0,
     otpHash VARCHAR(255),
+    otpDuressHash VARCHAR(255),
     otpCreatedAt TIMESTAMP NULL,
     otpExpiresAt TIMESTAMP NULL,
     completedAt TIMESTAMP NULL,
@@ -114,7 +118,8 @@ CREATE TABLE delivery_history (
         'OTP_VERIFIED',
         'OTP_FAILED',
         'DELIVERY_COMPLETED',
-        'DELIVERY_FAILED'
+        'DELIVERY_FAILED',
+        'DURESS_TRIGGERED'
     ) NOT NULL,
     description TEXT,
     metadata JSON,
@@ -127,6 +132,29 @@ CREATE TABLE delivery_history (
 
     INDEX idx_delivery_history_delivery_created (deliveryId, createdAt),
     INDEX idx_delivery_history_eventType (eventType)
+);
+
+CREATE TABLE duress_alerts (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    deliveryId BIGINT NOT NULL,
+    invoiceId BIGINT NOT NULL,
+    triggeredAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved BOOLEAN NOT NULL DEFAULT FALSE,
+    latitude DECIMAL(10,7) NULL,
+    longitude DECIMAL(11,7) NULL,
+
+    CONSTRAINT fk_duress_delivery
+        FOREIGN KEY (deliveryId)
+        REFERENCES deliveries(id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_duress_invoice
+        FOREIGN KEY (invoiceId)
+        REFERENCES invoices(id)
+        ON DELETE RESTRICT,
+
+    INDEX idx_duress_delivery (deliveryId),
+    INDEX idx_duress_resolved (resolved)
 );
 
 DELIMITER $$

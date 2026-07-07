@@ -40,8 +40,8 @@ async function sendOtp(req, res) {
 async function verifyOtp(req, res) {
     try {
         const deliveryId = Number(req.params.deliveryId);
-        const {otp} = req.body;
-        const result = await deliveryService.verifyOtp({ deliveryId, otp });
+        const { otp, latitude, longitude } = req.body;
+        const result = await deliveryService.verifyOtp({ deliveryId, otp, latitude, longitude });
 
         return res.status(200).json({
             success: true,

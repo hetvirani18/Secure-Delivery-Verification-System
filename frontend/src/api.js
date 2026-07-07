@@ -30,8 +30,8 @@ export function sendOtp(deliveryId) {
 	return api.post(`/deliveries/${deliveryId}/send-otp`).then((response) => response.data);
 }
 
-export function verifyOtp(deliveryId, otp) {
+export function verifyOtp(deliveryId, otp, latitude, longitude) {
 	return api
-		.post(`/deliveries/${deliveryId}/verify-otp`, { otp })
+		.post(`/deliveries/${deliveryId}/verify-otp`, { otp, latitude, longitude })
 		.then((response) => response.data);
 }

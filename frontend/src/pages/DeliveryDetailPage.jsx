@@ -92,13 +92,33 @@ function DeliveryDetailPage() {
                             
                             {timeline.map((entry) => (
                                 <div key={entry.key} className="relative">
-                                    {/* Inline bullet indicator for structural timeline tracking */}
                                     <div className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border border-white bg-slate-400" />
                                     
                                     <div className="rounded border border-slate-200 bg-slate-50/70 p-3">
                                         <p className="text-xs font-bold text-slate-900">{entry.title}</p>
                                         {entry.description && (
                                             <p className="mt-1 text-xs text-slate-500 font-medium">{entry.description}</p>
+                                        )}
+                                        {entry.details && entry.details.length > 0 && (
+                                            <div className="mt-2 space-y-0.5">
+                                                {entry.details.map((detail) => (
+                                                    <p key={detail.label} className="text-[10px] text-slate-400 font-mono">
+                                                        <span className="text-slate-500 font-semibold">{detail.label}:</span>{" "}
+                                                        {detail.isLink ? (
+                                                            <a
+                                                                href={detail.value}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-sky-500 underline hover:text-sky-700"
+                                                            >
+                                                                View on Maps
+                                                            </a>
+                                                        ) : (
+                                                            detail.value
+                                                        )}
+                                                    </p>
+                                                ))}
+                                            </div>
                                         )}
                                         <p className="mt-1.5 text-[10px] text-slate-400 font-mono">{formatDate(entry.createdAt)}</p>
                                     </div>

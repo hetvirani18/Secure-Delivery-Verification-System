@@ -46,15 +46,18 @@ export function buildTimeline(history) {
 		const metadata = safeJson(event.metadata) || {};
 		let title = event.description || event.eventType;
 		let description = "";
+		let details = []; // extra key-value pairs shown below description
 
 		if (event.eventType === "IDENTIFY_FAILED") {
 			identifyAttempt += 1;
 			title = `Identify attempt ${identifyAttempt} — score ${metadata.similarity ?? "—"} — rejected`;
 			description = metadata.reason || event.description || "Receiver check failed";
+			if (metadata.receiverId) details.push({ label: "Receiver ID", value: metadata.receiverId });
 		} else if (event.eventType === "IDENTIFY_SUCCESS") {
 			identifyAttempt += 1;
 			title = `Identify attempt ${identifyAttempt} — score ${metadata.similarity ?? "—"} — accepted`;
 			description = event.description || "Receiver accepted";
+			if (metadata.receiverId) details.push({ label: "Receiver ID", value: metadata.receiverId });
 		} else if (event.eventType === "OTP_SENT") {
 			title = "OTP sent";
 			description = metadata.expiresAt ? `Expires at ${formatDate(metadata.expiresAt)}` : event.description || "OTP generated";
@@ -62,24 +65,38 @@ export function buildTimeline(history) {
 			otpAttempt += 1;
 			title = metadata.reason === "OTP expired" ? "OTP expired" : `OTP attempt ${otpAttempt} — rejected`;
 			description = metadata.reason || event.description || "OTP verification failed";
+			if (metadata.attempt) details.push({ label: "Attempt", value: metadata.attempt });
 		} else if (event.eventType === "OTP_VERIFIED") {
 			title = "OTP verified successfully";
 			description = event.description || "OTP matched";
 		} else if (event.eventType === "DELIVERY_COMPLETED") {
 			title = "Delivery completed";
 			description = event.description || "Delivery closed successfully";
+			if (metadata.latitude != null && metadata.longitude != null) {
+				details.push({ label: "Location", value: `${Number(metadata.latitude).toFixed(6)}, ${Number(metadata.longitude).toFixed(6)}` });
+				details.push({ label: "Maps", value: `https://maps.google.com/?q=${metadata.latitude},${metadata.longitude}`, isLink: true });
+			} else {
+				details.push({ label: "Location", value: "Not captured" });
+			}
 		} else if (event.eventType === "DELIVERY_CREATED") {
 			title = "Delivery started";
 			description = event.description || "Delivery row created";
+			if (metadata.invoiceId) details.push({ label: "Invoice ID", value: metadata.invoiceId });
+			if (metadata.clientId) details.push({ label: "Client ID", value: metadata.clientId });
 		} else if (event.eventType === "DURESS_TRIGGERED") {
 			title = "🚨 Duress alert triggered";
 			description = "Silent alarm fired — ops team notified";
+			if (metadata.latitude != null && metadata.longitude != null) {
+				details.push({ label: "Alert Location", value: `${Number(metadata.latitude).toFixed(6)}, ${Number(metadata.longitude).toFixed(6)}` });
+				details.push({ label: "Maps", value: `https://maps.google.com/?q=${metadata.latitude},${metadata.longitude}`, isLink: true });
+			}
 		}
 
 		return {
 			key: `${event.eventType}-${index}`,
 			title,
 			description,
+			details,
 			createdAt: event.createdAt,
 		};
 	});

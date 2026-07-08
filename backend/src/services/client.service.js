@@ -173,8 +173,40 @@ async function getClientSummary(clientId) {
 	};
 }
 
+async function getClientReceivers(clientId) {
+	const id = validateClientId(clientId);
+
+	const [clientRows] = await pool.query(
+		"SELECT id FROM clients WHERE id = ?",
+		[id]
+	);
+
+	if (clientRows.length === 0) {
+		const error = new Error("client not found");
+		error.statusCode = 404;
+		throw error;
+	}
+
+	const [rows] = await pool.query(
+		`SELECT id, name, phone, photoUrl, isActive
+		 FROM receivers
+		 WHERE clientId = ? AND isActive = TRUE
+		 ORDER BY name ASC`,
+		[id]
+	);
+
+	return rows.map((r) => ({
+		id: r.id,
+		name: r.name,
+		phone: r.phone,
+		photoUrl: r.photoUrl,
+		isActive: Boolean(r.isActive),
+	}));
+}
+
 module.exports = {
 	createClient,
 	addReceiver,
+	getClientReceivers,
 	getClientSummary,
 };

@@ -60,8 +60,26 @@ async function getClientSummary(req, res) {
 	}
 }
 
+async function getClientReceivers(req, res) {
+	try {
+		const clientId = Number(req.params.id);
+		const receivers = await clientService.getClientReceivers(clientId);
+
+		return res.status(200).json({
+			success: true,
+			data: receivers,
+		});
+	} catch (error) {
+		return res.status(error.statusCode || 500).json({
+			success: false,
+			message: error.message || "Failed to fetch receivers",
+		});
+	}
+}
+
 module.exports = {
 	createClient,
 	addReceiver,
 	getClientSummary,
+	getClientReceivers,
 };

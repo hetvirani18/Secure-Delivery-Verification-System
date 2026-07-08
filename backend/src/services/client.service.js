@@ -204,9 +204,17 @@ async function getClientReceivers(clientId) {
 	}));
 }
 
+async function getAllClients() {
+	const [rows] = await pool.query(
+		`SELECT id, name, phone, createdAt FROM clients ORDER BY name ASC`
+	);
+	return rows;
+}
+
 module.exports = {
 	createClient,
 	addReceiver,
 	getClientReceivers,
 	getClientSummary,
+	getAllClients,
 };

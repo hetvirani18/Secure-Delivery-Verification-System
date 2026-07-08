@@ -39,3 +39,11 @@ export function verifyOtp(deliveryId, otp, latitude, longitude) {
 export function fetchClientReceivers(clientId) {
 	return api.get(`/clients/${clientId}/receivers`).then((response) => response.data);
 }
+
+export function fetchClients() {
+	return api.get("/clients").then((response) => response.data);
+}
+
+export function fetchClientSummary(clientId) {
+	return api.get(`/clients/${clientId}/summary`).then((response) => response.data);
+}

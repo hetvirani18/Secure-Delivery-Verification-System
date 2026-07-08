@@ -77,9 +77,22 @@ async function getClientReceivers(req, res) {
 	}
 }
 
+async function getAllClients(req, res) {
+	try {
+		const clients = await clientService.getAllClients();
+		return res.status(200).json({ success: true, data: clients });
+	} catch (error) {
+		return res.status(error.statusCode || 500).json({
+			success: false,
+			message: error.message || "Failed to fetch clients",
+		});
+	}
+}
+
 module.exports = {
 	createClient,
 	addReceiver,
 	getClientSummary,
 	getClientReceivers,
+	getAllClients,
 };

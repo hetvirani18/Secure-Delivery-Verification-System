@@ -22,11 +22,13 @@ using MySQL transactions and row-level locking.
 - Add Authorized Receivers (with optional duress offset)
 - Create Invoices
 - Start Delivery
-- Receiver Identification
+- Receiver Identification (photo card picker with face match slider)
 - OTP Generation (real + duress hash stored, plain never persisted)
 - OTP Verification with Silent Duress Alarm and GPS Capture
 - Delivery History (append-only audit trail)
-- Client Summary
+- Client Summary (single aggregated SQL query)
+- List All Clients
+- List Active Receivers per Client
 - Concurrency Safe Invoice Generation
 - Concurrency Safe Delivery Creation
 
@@ -234,7 +236,21 @@ Workflow:
 
 The response is identical for both real and duress paths — an observer cannot distinguish them.
 
-### 6.8 GET /clients/:id/summary
+### 6.8 GET /clients
+
+Purpose:
+- Return a list of all clients (id, name, phone, createdAt).
+
+Used by the frontend Clients page to populate the client list.
+
+### 6.9 GET /clients/:id/receivers
+
+Purpose:
+- Return all active receivers for a client (id, name, phone, photoUrl).
+
+Used by the Run Delivery page to populate the receiver photo card picker.
+
+### 6.10 GET /clients/:id/summary
 
 Purpose:
 - Return a summary for a client in a single SQL query.
@@ -250,7 +266,7 @@ Workflow:
 2. Run a single aggregated SQL query with CTEs — no N+1, no JS loops.
 3. Return summary object.
 
-### 6.9 GET /invoices
+### 6.11 GET /invoices
 
 Purpose:
 - Return all PENDING invoices that have no active delivery.
@@ -262,7 +278,7 @@ Workflow:
 2. Return only invoices that are PENDING with no active delivery (or last delivery was FAILED).
 3. Return list ordered by most recent first.
 
-### 6.10 GET /deliveries
+### 6.12 GET /deliveries
 
 Purpose:
 - Return all deliveries (latest per invoice) with client, receiver, invoice, and last event details.
@@ -274,7 +290,7 @@ Workflow:
 2. Join clients, invoices, receivers, and latest history event.
 3. Return all deliveries ordered by most recent first.
 
-### 6.11 GET /deliveries/:deliveryId/history
+### 6.13 GET /deliveries/:deliveryId/history
 
 Purpose:
 - Return the full append-only audit trail for a single delivery.
@@ -284,7 +300,7 @@ Workflow:
 2. Confirm delivery exists.
 3. Return all delivery_history rows for that delivery ordered by createdAt ASC, id ASC.
 
-### 6.12 GET /health
+### 6.14 GET /health
 
 Purpose:
 - Verify API and DB connectivity.
@@ -311,7 +327,26 @@ Demo flow (Run Delivery page):
 4. Click Verify OTP — browser requests location, coords are sent with the OTP.
 5. Delivery completes either way. Check `duress_alerts` and `invoices` tables to confirm coords were stored.
 
-## 7. Installation
+## 7. Frontend Pages
+
+### Board (`/`)
+All deliveries at a glance with status badges (pending, in-progress, completed, failed). Click any delivery to view its full audit trail.
+
+### Delivery Detail (`/deliveries/:id`)
+Full append-only audit timeline for a delivery. Shows all events with human-readable labels, face match scores, OTP attempts, GPS coordinates with a Google Maps link on completion, and duress alerts if triggered.
+
+### Run Delivery (`/run-delivery`)
+Step-by-step delivery flow simulator:
+- Select a pending invoice
+- Pick a receiver from photo cards (auto-loaded for that client)
+- Adjust face match score with a slider (green ≥85, red below)
+- Generate OTP — tap to reveal real code, hold 2s for duress code
+- Submit OTP — browser captures GPS coordinates automatically
+
+### Clients (`/clients`)
+List of all clients. Click any client to load their summary: total invoices, delivered/pending/failed counts, total delivered value, and the top receiver by completed deliveries.
+
+## 8. Installation
 
 1. Clone the repository.
 2. Move into backend folder.

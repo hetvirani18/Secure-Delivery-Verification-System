@@ -3,11 +3,13 @@ const {
     createClient,
     addReceiver,
     getClientSummary,
-    getClientReceivers
+    getClientReceivers,
+    getAllClients
 } = require("../controllers/client.controller.js");
 
 const router = express.Router();
 
+router.get("/", getAllClients);
 router.post("/", createClient);
 router.post("/:id/receivers", addReceiver);
 router.get("/:id/receivers", getClientReceivers);

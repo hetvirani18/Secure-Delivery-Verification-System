@@ -26,6 +26,9 @@ function Layout() {
 						<NavLink className={({ isActive }) => navClass(isActive)} to="/run-delivery">
 							Run Delivery
 						</NavLink>
+						<NavLink className={({ isActive }) => navClass(isActive)} to="/clients">
+							Clients
+						</NavLink>
 					</nav>
 				</div>
 			</header>
